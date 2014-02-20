@@ -37,6 +37,7 @@
 #define MX3_PWMCR_WAITEN		(1 << 23)
 #define MX3_PWMCR_DBGEN			(1 << 22)
 #define MX3_PWMCR_POUTC			(1 << 18)
+#define MX3_PWMCR_CLKSRC_IPG_32K	(3 << 16)
 #define MX3_PWMCR_CLKSRC_IPG_HIGH	(2 << 16)
 #define MX3_PWMCR_CLKSRC_IPG		(1 << 16)
 #define MX3_PWMCR_SWR			(1 << 3)
@@ -167,7 +168,15 @@ static int imx_pwm_apply_v2(struct pwm_chip *chip, struct pwm_device *pwm,
 	pwm_get_state(pwm, &cstate);
 
 	if (state->enabled) {
-		c = clk_get_rate(imx->clk_per);
+		if (state->duty_cycle > 100000) {
+			cr = MX3_PWMCR_CLKSRC_IPG_32K;
+			c = 32768;
+		}
+		else {
+			cr = MX3_PWMCR_CLKSRC_IPG_HIGH;
+			c = clk_get_rate(imx->clk_per);
+			dev_dbg(chip->dev, "Clock rate: %lld\n", c);
+		}
 		c *= state->period;
 
 		do_div(c, 1000000000);
@@ -207,9 +216,9 @@ static int imx_pwm_apply_v2(struct pwm_chip *chip, struct pwm_device *pwm,
 		writel(duty_cycles, imx->mmio_base + MX3_PWMSAR);
 		writel(period_cycles, imx->mmio_base + MX3_PWMPR);
 
-		cr = MX3_PWMCR_PRESCALER(prescale) |
+		cr |= MX3_PWMCR_PRESCALER(prescale) |
 		     MX3_PWMCR_STOPEN | MX3_PWMCR_DOZEEN | MX3_PWMCR_WAITEN |
-		     MX3_PWMCR_DBGEN | MX3_PWMCR_CLKSRC_IPG_HIGH |
+		     MX3_PWMCR_DBGEN |
 		     MX3_PWMCR_EN;
 
 		if (state->polarity == PWM_POLARITY_INVERSED)
