@@ -418,6 +418,14 @@ config CHARGER_CPCAP
 	  Say Y to enable support for CPCAP PMIC charger driver for Motorola
 	  mobile devices such as Droid 4.
 
+config CHARGER_SENOKO
+	tristate "Senoko charger driver"
+	depends on MFD_SENOKO
+	help
+	  Select this to enable Senoko to act as a power regulator.
+	  Senoko contains an AC plug, and can report the state of the
+	  AC adapter, as well as provide power down/reboot features.
+
 config CHARGER_ISP1704
 	tristate "ISP1704 USB Charger Detection"
 	depends on USB_PHY
