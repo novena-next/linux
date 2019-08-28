@@ -350,6 +350,13 @@
 	txd2-skew-ps = <3000>;
 	txd3-skew-ps = <3000>;
 	status = "okay";
+	/* workaround for ERR00687 */
+	compatible = "fsl,imx6q-fec";
+	reg = <0x02188000 0x4000>;
+	interrupts-extended = <&gpio1 6 IRQ_TYPE_LEVEL_HIGH>,
+			      <&intc 0 119 IRQ_TYPE_LEVEL_HIGH>;
+	fsl,magic-packet;
+	fsl,err006687-workaround-present;
 };
 
 &hdmi {
@@ -770,6 +777,8 @@
 			MX6QDL_PAD_GPIO_16__ENET_REF_CLK	0x4001b0a8
 			/* Ethernet reset */
 			MX6QDL_PAD_EIM_D23__GPIO3_IO23		0x1b0b1
+			/* workaround for ERR00687 */
+			MX6QDL_PAD_GPIO_6__ENET_IRQ        0x000b1
 		>;
 	};
 
