@@ -50,6 +50,7 @@
 #include "imx6q.dtsi"
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
+#include <dt-bindings/thermal/thermal.h>
 
 / {
 	model = "Kosagi Novena Dual/Quad";
@@ -66,7 +67,7 @@
 
 	backlight: backlight {
 		compatible = "pwm-backlight";
-		pwms = <&pwm1 0 10000000>;
+		pwms = <&pwm1 0 2500000>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_backlight_novena>;
 		power-supply = <&reg_lvds_lcd>;
@@ -82,7 +83,8 @@
 		user-button {
 			label = "User Button";
 			gpios = <&gpio4 14 GPIO_ACTIVE_LOW>;
-			linux,code = <KEY_POWER>;
+			linux,code = <KEY_DISPLAYTOGGLE>;
+			wakeup-source;
 		};
 
 		lid {
@@ -108,6 +110,12 @@
 	panel: panel {
 		compatible = "innolux,n133hse-ea1", "simple-panel";
 		backlight = <&backlight>;
+		power-supply = <&reg_lvds_lcd>;
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&bridge_out>;
+			};
+		};
 	};
 
 	reg_2p5v: regulator-2p5v {
@@ -135,6 +143,9 @@
 		startup-delay-us = <400000>;
 		gpio = <&gpio5 17 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
+		regulator-state-mem {
+			regulator-on-in-suspend;
+		};
 	};
 
 	reg_display: regulator-display {
@@ -142,7 +153,7 @@
 		regulator-name = "lcd-display-power";
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
-		startup-delay-us = <200000>;
+		startup-delay-us = <2000000>;
 		gpio = <&gpio5 28 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
 	};
@@ -152,6 +163,7 @@
 		regulator-name = "lcd-lvds-power";
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
+		parent-supply = <&reg_display>;
 		gpio = <&gpio4 15 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
 	};
@@ -163,6 +175,9 @@
 		regulator-max-microvolt = <1500000>;
 		gpio = <&gpio7 12 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
+		regulator-state-mem {
+			regulator-on-in-suspend;
+		};
 	};
 
 	reg_sata: regulator-sata {
@@ -203,6 +218,67 @@
 		mux-int-port = <0x1>;
 		mux-ext-port = <0x3>;
 	};
+
+	fan0: gpio-fan {
+		compatible = "gpio-fan";
+		gpios = <&gpio3 19 GPIO_ACTIVE_HIGH>;
+		gpio-fan,speed-map = <0    1
+				      3000 0>;
+		cooling-min-state = <0>;
+		cooling-max-state = <1>;
+		#cooling-cells = <2>;
+	};
+
+	thermal-zones {
+		cpu_thermal: cpu-thermal {
+			polling-delay-passive = <250>; /* milliseconds */
+			polling-delay = <500>; /* milliseconds */
+
+			thermal-sensors = <&tempmon 0>;
+
+			trips {
+				cpu_alert0: cpu-alert0 {
+					temperature = <70000>; /* millicelsius */
+					hysteresis = <9000>; /* millicelsius */
+					type = "active";
+				};
+				cpu_alert1: cpu-alert1 {
+					temperature = <75000>; /* millicelsius */
+					hysteresis = <4000>; /* millicelsius */
+					type = "active";
+				};
+				cpu_alert2: cpu-alert2 {
+					temperature = <80000>; /* millicelsius */
+					hysteresis = <4000>; /* millicelsius */
+					type = "active";
+				};
+				cpu_crit: cpu-crit {
+					temperature = <105000>; /* millicelsius */
+					hysteresis = <8000>; /* millicelsius */
+					type = "critical";
+				};
+			};
+
+			cooling-maps {
+				map0 {
+					trip = <&cpu_alert0>;
+					cooling-device = <&fan0 1 THERMAL_NO_LIMIT>;
+				};
+				map1 {
+					trip = <&cpu_alert1>;
+					cooling-device = <&cpu0 1 1>;
+				};
+				map2 {
+					trip = <&cpu_alert2>;
+					cooling-device = <&cpu0 2 3>;
+				};
+				map4 {
+					trip = <&cpu_crit>;
+					cooling-device = <&cpu0 3 3>;
+				};
+			};
+		};
+	};
 };
 
 &audmux {
@@ -215,6 +291,45 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi3_novena>;
 	status = "okay";
+
+	spidev@0 {
+		compatible = "kosagi,novena-fpga-spidev";
+		spi-max-frequency = <30000000>;
+		reg = <0>;
+	};
+
+	fpga@1 {
+		compatible = "kosagi,novena-fpga";
+
+		spi-max-frequency = <30000000>;
+		reg = <1>;
+
+		pinctrl-names = "default", "state-eim", "state-gpio";
+		pinctrl-0 = <&pinctrl_fpga_gpio>;
+		pinctrl-1 = <&pinctrl_fpga_eim>;
+		pinctrl-2 = <&pinctrl_fpga_gpio>;
+		clocks = <&clks IMX6QDL_CLK_LVDS2_SEL>,
+		         <&clks IMX6QDL_CLK_LVDS2_GATE>,
+			 <&clks IMX6QDL_CLK_ENET_REF>,
+			 <&clks IMX6QDL_CLK_EIM_SLOW>;
+		clock-names = "lvds", "lvds-switch", "lvds-parent", "eim-slow";
+		reset-switch = <&gpio1 17 GPIO_ACTIVE_HIGH>;
+		power-switch = <&gpio5 7 GPIO_ACTIVE_HIGH>;
+
+		/* used by bunnie's scope module */
+		kosagi,weim-cs0-timing = <0x31910BBF 0x00001000 0x09014000
+					  0x00000000 0x09080800 0x00000000>;
+		kosagi,weim-cs1-timing = <0x81910CBF 0x00001000 0x07001000
+					  0x00000200 0x02040400 0x00000000>;
+		kosagi,weim-cs-mapping = <2>;
+	};
+};
+
+&clks {
+	assigned-clocks = <&clks IMX6QDL_CLK_LDB_DI0_SEL>,
+			  <&clks IMX6QDL_CLK_LDB_DI1_SEL>;
+	assigned-clock-parents = <&clks IMX6QDL_CLK_PLL2_PFD2_396M>,
+				 <&clks IMX6QDL_CLK_PLL2_PFD2_396M>;
 };
 
 &fec {
@@ -257,6 +372,15 @@
 	rtc: pcf8523@68 {
 		compatible = "nxp,pcf8523";
 		reg = <0x68>;
+	};
+
+	senoko: senoko@20 {
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_senoko_novena>;
+		compatible = "kosagi,senoko";
+		reg = <0x20>;
+		irq-gpio = <&gpio1 20 GPIO_ACTIVE_HIGH>;
+		supplied-to = "sbs-0-000b";
 	};
 
 	sbs_battery: bq20z75@b {
@@ -347,6 +471,9 @@
 				regulator-min-microvolt = <5000000>;
 				regulator-max-microvolt = <5150000>;
 				regulator-boot-on;
+				regulator-state-mem {
+					regulator-on-in-suspend;
+				};
 			};
 
 			reg_snvs: vsnvs {
@@ -422,6 +549,32 @@
 					 <&clks IMX6QDL_CLK_CKO1_PODF>;
 		assigned-clock-rates = <0 0 722534400 22579200>;
 	};
+
+	eepromoops@56 {
+		compatible = "kosagi,eepromoops";
+		reg = <0x56>;
+		status = "okay";
+	};
+
+	it6251@5c {
+		compatible = "it,it6251";
+		reg = <0x5c>;
+		power-supply = <&reg_display>;
+
+		ports {
+			port@0 {
+				bridge_out: endpoint {
+					remote-endpoint = <&panel_in>;
+				};
+			};
+
+			port@1 {
+				bridge_in: endpoint {
+					remote-endpoint = <&ldb_out>;
+				};
+			};
+		};
+	};
 };
 
 &kpp {
@@ -440,8 +593,43 @@
 	lvds-channel@0 {
 		fsl,data-mapping = "jeida";
 		fsl,data-width = <24>;
-		fsl,panel = <&panel>;
+/*		fsl,panel = <&panel>;*/
 		status = "okay";
+
+		port@4 {
+			reg = <4>;
+			ldb_out: endpoint {
+				remote-endpoint = <&bridge_in>;
+			};
+		};
+
+/*
+		port@2 {
+			reg = <2>;
+
+			lvds0_out: endpoint {
+				remote-endpoint = <&panel_in>;
+			};
+		};
+*/
+		display-timings {
+		native-mode = <&lvds_timing0>;
+			lvds_timing0: 1920x1080p60 {
+				clock-frequency = <137142857>;
+				hactive = <1920>;
+				hback-porch = <1>;
+				hfront-porch = <158>;
+				hsync-len = <1>;
+
+				vactive = <1080>;
+				vback-porch = <1>;
+				vfront-porch = <30>;
+				vsync-len = <1>;
+
+				hsync-active = <0>;
+				vsync-active = <0>;
+			};
+		};
 	};
 };
 
@@ -449,7 +637,8 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pcie_novena>;
 	reset-gpio = <&gpio3 29 GPIO_ACTIVE_LOW>;
-	vpcie-supply = <&reg_pcie>;
+	vdd3p3-supply = <&reg_pcie>;
+	vdd1p5-supply = <&reg_vgen2>;
 	status = "okay";
 };
 
@@ -519,6 +708,23 @@
 };
 
 &iomuxc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hog>;
+	pinctrl_hog: hoggrp-novena {
+		fsl,pins = <
+			/* Peek array power */
+			MX6QDL_PAD_EIM_D19__GPIO3_IO19  0x80000000
+
+			/* UART3 RTS as GPIO */
+			MX6QDL_PAD_SD1_DAT0__GPIO1_IO16	0x80000000
+
+			/* UART4 RTS as GPIO */
+			MX6QDL_PAD_CSI0_DAT16__GPIO6_IO02 0x80000000
+
+			/* UART4 CTS as GPIO */
+			MX6QDL_PAD_CSI0_DAT17__GPIO6_IO03 0x80000000
+		>;
+	};
 	pinctrl_audmux_novena: audmuxgrp-novena {
 		fsl,pins = <
 			MX6QDL_PAD_CSI0_DAT7__AUD3_RXD		0x130b0
