@@ -23,6 +23,8 @@
 #include <linux/types.h>
 #include <linux/nvmem-consumer.h>
 
+#include "../thermal_hwmon.h"
+
 #define REG_SET		0x4
 #define REG_CLR		0x8
 #define REG_TOG		0xc
@@ -793,6 +795,17 @@ static int imx_thermal_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev,
 			"failed to register thermal zone device %d\n", ret);
 		clk_disable_unprepare(data->thermal_clk);
+		cpufreq_cooling_unregister(data->cdev);
+		cpufreq_cpu_put(data->policy);
+		return ret;
+	}
+
+	data->tz->tzp->no_hwmon = false;
+	ret = thermal_add_hwmon_sysfs(data->tz);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "failed to add hwmon interface: %d\n", ret);
+		clk_disable_unprepare(data->thermal_clk);
+		thermal_zone_device_unregister(data->tz);
 		cpufreq_cooling_unregister(data->cdev);
 		cpufreq_cpu_put(data->policy);
 		return ret;
