@@ -359,6 +359,22 @@
 	fsl,err006687-workaround-present;
 };
 
+/* reserve ipu1 for lvds, remove hdmi */
+/delete-node/&ipu1_di0_hdmi;
+/delete-node/&ipu1_di1_hdmi;
+/delete-node/&hdmi_mux_0;
+/delete-node/&hdmi_mux_1;
+
+/* reserve ipu2 for hdmi, remove lvds */
+/delete-node/&ipu2_di0_lvds0;
+/delete-node/&ipu2_di1_lvds0;
+/delete-node/&ipu2_di0_lvds1;
+/delete-node/&ipu2_di1_lvds1;
+/delete-node/&lvds0_mux_2;
+/delete-node/&lvds0_mux_3;
+/delete-node/&lvds1_mux_2;
+/delete-node/&lvds1_mux_3;
+
 &hdmi {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hdmi_novena>;
