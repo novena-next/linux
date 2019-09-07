@@ -289,7 +289,6 @@ err_unbind:
 #endif
 	component_unbind_all(drm->dev, drm);
 err_kms:
-	drm_mode_config_cleanup(drm);
 	drm_dev_put(drm);
 
 	return ret;
