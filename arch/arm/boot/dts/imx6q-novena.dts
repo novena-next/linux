@@ -564,13 +564,12 @@
 		clocks = <&clks IMX6QDL_CLK_CKO1>;
 		assigned-clocks = <&clks IMX6QDL_CLK_CKO>,
 				  <&clks IMX6QDL_CLK_CKO1_SEL>,
-				  <&clks IMX6QDL_CLK_PLL4_AUDIO>,
-				  <&clks IMX6QDL_CLK_CKO1>;
+				  <&clks IMX6QDL_CLK_PLL4>,
+				  <&clks IMX6QDL_CLK_PLL4_POST_DIV>,
+				  <&clks IMX6QDL_CLK_CKO1_PODF>;
 		assigned-clock-parents = <&clks IMX6QDL_CLK_CKO1>,
-					 <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
-					 <&clks IMX6QDL_CLK_OSC>,
-					 <&clks IMX6QDL_CLK_CKO1_PODF>;
-		assigned-clock-rates = <0 0 722534400 22579200>;
+					 <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>;
+		assigned-clock-rates = <0 0 722534400 0 22579200>;
 	};
 
 	eepromoops@56 {
