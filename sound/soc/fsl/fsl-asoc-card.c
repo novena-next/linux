@@ -8,13 +8,16 @@
 
 #include <linux/clk.h>
 #include <linux/i2c.h>
+#include <linux/gpio.h>
 #include <linux/module.h>
 #include <linux/of_platform.h>
+#include <linux/of_gpio.h>
 #if IS_ENABLED(CONFIG_SND_AC97_CODEC)
 #include <sound/ac97_codec.h>
 #endif
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
+#include <sound/jack.h>
 
 #include "fsl_esai.h"
 #include "fsl_sai.h"
@@ -92,6 +95,7 @@ struct fsl_asoc_card_priv {
 	snd_pcm_format_t asrc_format;
 	u32 dai_fmt;
 	char name[32];
+	int jack_gpio;
 };
 
 /**
@@ -129,6 +133,46 @@ static const struct snd_soc_dapm_widget fsl_asoc_card_dapm_widgets[] = {
 	SND_SOC_DAPM_MIC("AMIC", NULL),
 	SND_SOC_DAPM_MIC("DMIC", NULL),
 };
+
+static const struct snd_soc_dapm_widget imx_es8328_dapm_widgets[] = {
+	SND_SOC_DAPM_MIC("Mic Jack", NULL),
+	SND_SOC_DAPM_HP("Headphone", NULL),
+	SND_SOC_DAPM_SPK("Speaker", NULL),
+	SND_SOC_DAPM_REGULATOR_SUPPLY("audio-amp", 1, 0),
+};
+
+static struct snd_soc_jack_gpio headset_jack_gpios[] = {
+	{
+		.gpio = -1,
+		.name = "headset-gpio",
+		.report = SND_JACK_HEADSET,
+		.invert = 0,
+		.debounce_time = 200,
+	},
+};
+static struct snd_soc_jack headset_jack;
+
+static int fsl_asoc_card_dai_init(struct snd_soc_pcm_runtime *rtd)
+{
+	struct fsl_asoc_card_priv *priv = snd_soc_card_get_drvdata(rtd->card);
+	int ret = 0;
+
+	/* Headphone jack detection */
+	if (gpio_is_valid(priv->jack_gpio)) {
+		ret = snd_soc_card_jack_new(rtd->card, "Headphone",
+					    SND_JACK_HEADPHONE | SND_JACK_BTN_0,
+					    &headset_jack, NULL, 0);
+		if (ret)
+			return ret;
+
+		headset_jack_gpios[0].gpio = priv->jack_gpio;
+		ret = snd_soc_jack_add_gpios(&headset_jack,
+					     ARRAY_SIZE(headset_jack_gpios),
+					     headset_jack_gpios);
+	}
+
+	return ret;
+}
 
 static bool fsl_asoc_card_is_ac97(struct fsl_asoc_card_priv *priv)
 {
@@ -206,6 +250,7 @@ static struct snd_soc_dai_link fsl_asoc_card_dai[] = {
 		.name = "HiFi",
 		.stream_name = "HiFi",
 		.ops = &fsl_asoc_card_ops,
+		.init = &fsl_asoc_card_dai_init
 	},
 	/* DPCM Link between Front-End and Back-End (Optional) */
 	{
@@ -516,12 +561,17 @@ static int fsl_asoc_card_probe(struct platform_device *pdev)
 		}
 	}
 
+	priv->jack_gpio = of_get_named_gpio(pdev->dev.of_node, "jack-gpio", 0);
+
 	/* Default sample rate and format, will be updated in hw_params() */
 	priv->sample_rate = 44100;
 	priv->sample_format = SNDRV_PCM_FORMAT_S16_LE;
 
 	/* Assign a default DAI format, and allow each card to overwrite it */
 	priv->dai_fmt = DAI_FMT_BASE;
+
+	priv->card.dapm_widgets = fsl_asoc_card_dapm_widgets;
+	priv->card.num_dapm_widgets = ARRAY_SIZE(fsl_asoc_card_dapm_widgets);
 
 	/* Diversify the card configurations */
 	if (of_device_is_compatible(np, "fsl,imx-audio-cs42888")) {
@@ -558,6 +608,13 @@ static int fsl_asoc_card_probe(struct platform_device *pdev)
 		codec_dai_name = "ac97-hifi";
 		priv->card.set_bias_level = NULL;
 		priv->dai_fmt = SND_SOC_DAIFMT_AC97;
+	} else if (of_device_is_compatible(np, "fsl,imx-audio-es8328")) {
+		codec_dai_name = "es8328-hifi-analog";
+		priv->card.set_bias_level = NULL;
+		priv->dai_fmt |= SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
+				    SND_SOC_DAIFMT_CBM_CFM;
+		priv->card.dapm_widgets = imx_es8328_dapm_widgets;
+		priv->card.num_dapm_widgets = ARRAY_SIZE(imx_es8328_dapm_widgets);
 	} else {
 		dev_err(&pdev->dev, "unknown Device Tree compatible\n");
 		ret = -EINVAL;
@@ -599,8 +656,6 @@ static int fsl_asoc_card_probe(struct platform_device *pdev)
 				 audio_map_ac97 : audio_map;
 	priv->card.late_probe = fsl_asoc_card_late_probe;
 	priv->card.num_dapm_routes = ARRAY_SIZE(audio_map);
-	priv->card.dapm_widgets = fsl_asoc_card_dapm_widgets;
-	priv->card.num_dapm_widgets = ARRAY_SIZE(fsl_asoc_card_dapm_widgets);
 
 	/* Drop the second half of DAPM routes -- ASRC */
 	if (!asrc_pdev)
@@ -703,6 +758,7 @@ static const struct of_device_id fsl_asoc_card_dt_ids[] = {
 	{ .compatible = "fsl,imx-audio-sgtl5000", },
 	{ .compatible = "fsl,imx-audio-wm8962", },
 	{ .compatible = "fsl,imx-audio-wm8960", },
+	{ .compatible = "fsl,imx-audio-es8328", },
 	{}
 };
 MODULE_DEVICE_TABLE(of, fsl_asoc_card_dt_ids);
