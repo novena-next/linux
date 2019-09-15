@@ -203,6 +203,7 @@ static struct thermal_soc_data thermal_imx7d_data = {
 struct imx_thermal_data {
 	struct cpufreq_policy *policy;
 	struct thermal_zone_device *tz;
+	struct thermal_zone_device *tzof;
 	struct thermal_cooling_device *cdev;
 	enum thermal_device_mode mode;
 	struct regmap *tempmon;
@@ -254,9 +255,9 @@ static void imx_set_alarm_temp(struct imx_thermal_data *data,
 		     alarm_value << soc_data->high_alarm_shift);
 }
 
-static int imx_get_temp(struct thermal_zone_device *tz, int *temp)
+static int imx_get_temp(void *drvdata, int *temp)
 {
-	struct imx_thermal_data *data = tz->devdata;
+	struct imx_thermal_data *data = drvdata;
 	const struct thermal_soc_data *soc_data = data->socdata;
 	struct regmap *map = data->tempmon;
 	unsigned int n_meas;
@@ -298,7 +299,7 @@ static int imx_get_temp(struct thermal_zone_device *tz, int *temp)
 	}
 
 	if ((val & soc_data->temp_valid_mask) == 0) {
-		dev_dbg(&tz->device, "temp measurement never finished\n");
+		dev_dbg(&data->tz->device, "temp measurement never finished\n");
 		return -EAGAIN;
 	}
 
@@ -319,13 +320,13 @@ static int imx_get_temp(struct thermal_zone_device *tz, int *temp)
 		if (data->alarm_temp == data->temp_critical &&
 			*temp < data->temp_passive) {
 			imx_set_alarm_temp(data, data->temp_passive);
-			dev_dbg(&tz->device, "thermal alarm off: T < %d\n",
+			dev_dbg(&data->tz->device, "thermal alarm off: T < %d\n",
 				data->alarm_temp / 1000);
 		}
 	}
 
 	if (*temp != data->last_temp) {
-		dev_dbg(&tz->device, "millicelsius: %d\n", *temp);
+		dev_dbg(&data->tz->device, "millicelsius: %d\n", *temp);
 		data->last_temp = *temp;
 	}
 
@@ -336,6 +337,11 @@ static int imx_get_temp(struct thermal_zone_device *tz, int *temp)
 	}
 
 	return 0;
+}
+
+static int imx_get_temp_zoned(struct thermal_zone_device *tz, int *temp)
+{
+	return imx_get_temp(tz->devdata, temp);
 }
 
 static int imx_get_mode(struct thermal_zone_device *tz,
@@ -473,13 +479,17 @@ static int imx_unbind(struct thermal_zone_device *tz,
 static struct thermal_zone_device_ops imx_tz_ops = {
 	.bind = imx_bind,
 	.unbind = imx_unbind,
-	.get_temp = imx_get_temp,
+	.get_temp = imx_get_temp_zoned,
 	.get_mode = imx_get_mode,
 	.set_mode = imx_set_mode,
 	.get_trip_type = imx_get_trip_type,
 	.get_trip_temp = imx_get_trip_temp,
 	.get_crit_temp = imx_get_crit_temp,
 	.set_trip_temp = imx_set_trip_temp,
+};
+
+static struct thermal_zone_of_device_ops imx_tzof_ops = {
+	.get_temp = imx_get_temp,
 };
 
 static int imx_init_calib(struct platform_device *pdev, u32 ocotp_ana1)
@@ -788,6 +798,7 @@ static int imx_thermal_probe(struct platform_device *pdev)
 						&imx_tz_ops, NULL,
 						IMX_PASSIVE_DELAY,
 						IMX_POLLING_DELAY);
+
 	if (IS_ERR(data->tz)) {
 		ret = PTR_ERR(data->tz);
 		dev_err(&pdev->dev,
@@ -796,6 +807,17 @@ static int imx_thermal_probe(struct platform_device *pdev)
 		cpufreq_cooling_unregister(data->cdev);
 		cpufreq_cpu_put(data->policy);
 		return ret;
+	}
+
+	data->tzof = devm_thermal_zone_of_sensor_register(&pdev->dev, 0,
+						  data,
+						  &imx_tzof_ops);
+
+	if (IS_ERR(data->tzof)) {
+		ret = PTR_ERR(data->tzof);
+		dev_warn(&pdev->dev,
+			"failed to register thermal sensor device %d\n", ret);
+		data->tzof = NULL;
 	}
 
 	dev_info(&pdev->dev, "%s CPU temperature grade - max:%dC"
@@ -828,6 +850,8 @@ static int imx_thermal_probe(struct platform_device *pdev)
 	if (ret < 0) {
 		dev_err(&pdev->dev, "failed to request alarm irq: %d\n", ret);
 		clk_disable_unprepare(data->thermal_clk);
+		if (data->tzof)
+			thermal_zone_of_sensor_unregister(&pdev->dev, data->tzof);
 		thermal_zone_device_unregister(data->tz);
 		cpufreq_cooling_unregister(data->cdev);
 		cpufreq_cpu_put(data->policy);
@@ -848,6 +872,8 @@ static int imx_thermal_remove(struct platform_device *pdev)
 	if (!IS_ERR(data->thermal_clk))
 		clk_disable_unprepare(data->thermal_clk);
 
+	if (data->tzof)
+		thermal_zone_of_sensor_unregister(&pdev->dev, data->tzof);
 	thermal_zone_device_unregister(data->tz);
 	cpufreq_cooling_unregister(data->cdev);
 	cpufreq_cpu_put(data->policy);
