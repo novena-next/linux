@@ -80,7 +80,7 @@
 		#thermal-sensor-cells = <0>;
 	};
 
-	ldb: ldb {
+	ldb: ldb@020e0008 {
 		#address-cells = <1>;
 		#size-cells = <0>;
 		compatible = "fsl,imx6q-ldb", "fsl,imx53-ldb";
