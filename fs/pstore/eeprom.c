@@ -85,8 +85,6 @@ struct eeprom_priv {
 
 	size_t record_size;
 
-	int do_dump_oops;
-
 	struct pstore_info *pstore;
 
 	struct i2c_client *i2c;
@@ -383,6 +381,11 @@ static int notrace eeprom_pstore_write(struct pstore_record *record)
 		return -EINVAL;
 	}
 
+	if(type == PSTORE_TYPE_DMESG && reason == KMSG_DUMP_OOPS && !do_dump_oops) {
+		dev_dbg(&priv->i2c->dev, "do_dump_oops is disabled, refusing to dump\n");
+		return -EINVAL;
+	}
+
 //	if (part != 1) {
 //		dev_dbg(&priv->i2c->dev, "Only care about part 1\n");
 //		return -ENOSPC;
@@ -450,7 +453,6 @@ static int eepromoops_i2c_probe(struct i2c_client *i2c,
 	priv->eeprom_settle_usec = eeprom_settle_usec;
 	priv->eeprom_page_size = eeprom_page_size;
 	priv->record_size = record_size;
-	priv->do_dump_oops = do_dump_oops;
 	priv->i2c = i2c;
 	priv->current_record = 0;
 
