@@ -355,7 +355,7 @@ static ssize_t eeprom_pstore_read(struct pstore_record *record)
 		return 0;
 
 	record->compressed = bucket.header.compressed;
-	record->time = bucket.header.time;
+	record->time = timespec_to_timespec64(bucket.header.time);
 	record->type = bucket.header.type;
 	record->id = bucket.id;
 	record->buf = bucket.data;
@@ -389,10 +389,7 @@ static int notrace eeprom_pstore_write(struct pstore_record *record)
 //	}
 
 	/* Report zeroed timestamp if called before timekeeping has resumed. */
-	if (__getnstimeofday(&bucket.header.time)) {
-		bucket.header.time.tv_sec = 0;
-		bucket.header.time.tv_nsec = 0;
-	}
+	bucket.header.time = ns_to_timespec(ktime_get_real_fast_ns());
 	
 	bucket.header.type = type;
 	bucket.header.compressed = record->compressed;
@@ -434,6 +431,7 @@ static struct pstore_info eeprom_pstore_info = {
 	.read	= eeprom_pstore_read,
 	.write	= eeprom_pstore_write,
 	.erase	= eeprom_pstore_erase,
+	.flags  = PSTORE_FLAGS_DMESG,
 };
 
 
@@ -460,7 +458,6 @@ static int eepromoops_i2c_probe(struct i2c_client *i2c,
 	priv->pstore->data = priv;
 	priv->pstore->bufsize = priv->record_size - sizeof(struct eeprom_bucket_header);
 	priv->pstore->buf = kmalloc(priv->pstore->bufsize, GFP_KERNEL);
-	spin_lock_init(&priv->pstore->buf_lock);
 	if (!priv->pstore->buf) {
 		pr_err("cannot allocate pstore buffer\n");
 		err = -ENOMEM;
