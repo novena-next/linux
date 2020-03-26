@@ -64,6 +64,18 @@
 	chosen {
 		stdout-path = &uart2;
 	};
+	reserved-memory {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		linux,cma {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0x10000000>;
+			linux,cma-default;
+		};
+	};
 
 	backlight: backlight {
 		compatible = "pwm-backlight";
