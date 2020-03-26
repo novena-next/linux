@@ -480,25 +480,15 @@ fail_out:
 	return err;
 }
 
-static int eepromoops_i2c_remove(struct i2c_client *client)
+static int eepromoops_i2c_remove(struct i2c_client *i2c)
 {
-#if 0
-	/* TODO(kees): We cannot unload eepromoops since pstore doesn't support
-	 * unregistering yet.
-	 */
-	struct eeprom_priv *priv = &oops_cxt;
+	struct eeprom_priv *priv = i2c_get_clientdata(i2c);
+	pstore_unregister(priv->pstore);
 
-	iounmap(priv->virt_addr);
-	release_mem_region(priv->phys_addr, priv->size);
-	priv->max_dump_cnt = 0;
-
-	/* TODO(kees): When pstore supports unregistering, call it here. */
 	kfree(priv->pstore->buf);
 	priv->pstore->bufsize = 0;
 
 	return 0;
-#endif
-	return -EBUSY;
 }
 
 static const struct i2c_device_id eepromoops_i2c_id[] = {
@@ -520,7 +510,7 @@ static struct i2c_driver eepromoops_i2c_driver = {
 		.of_match_table	= eepromoops_of_match,
 	},
 	.probe	= eepromoops_i2c_probe,
-	.remove	= __exit_p(eepromoops_i2c_remove),
+	.remove	= eepromoops_i2c_remove,
 	.id_table	= eepromoops_i2c_id,
 };
 
