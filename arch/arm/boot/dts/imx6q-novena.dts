@@ -149,15 +149,12 @@
 	reg_audio_codec: regulator-audio-codec {
 		compatible = "regulator-fixed";
 		regulator-name = "es8328-power";
-		regulator-boot-on;
+		regulator-always-on;
 		regulator-min-microvolt = <5000000>;
 		regulator-max-microvolt = <5000000>;
 		startup-delay-us = <400000>;
 		gpio = <&gpio5 17 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
-		regulator-state-mem {
-			regulator-on-in-suspend;
-		};
 	};
 
 	reg_display: regulator-display {
